@@ -1,11 +1,16 @@
 import sqlite3
 import os
 
+# Pastikan folder data ada
 os.makedirs("data", exist_ok=True)
+
+# Koneksi ke database
 conn = sqlite3.connect("data/lms.db")
 c = conn.cursor()
 
+# =========================
 # Tabel user
+# =========================
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,7 +20,9 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
+# =========================
 # Tabel kalender / kegiatan
+# =========================
 c.execute("""
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +32,9 @@ CREATE TABLE IF NOT EXISTS events (
 )
 """)
 
+# =========================
 # Tabel kuis
+# =========================
 c.execute("""
 CREATE TABLE IF NOT EXISTS quizzes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +46,9 @@ CREATE TABLE IF NOT EXISTS quizzes (
 )
 """)
 
+# =========================
 # Tabel hasil kuis
+# =========================
 c.execute("""
 CREATE TABLE IF NOT EXISTS quiz_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +59,9 @@ CREATE TABLE IF NOT EXISTS quiz_results (
 )
 """)
 
+# =========================
 # Tabel tugas
+# =========================
 c.execute("""
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,7 +72,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 )
 """)
 
+# =========================
 # Tabel progres
+# =========================
 c.execute("""
 CREATE TABLE IF NOT EXISTS progress (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +84,22 @@ CREATE TABLE IF NOT EXISTS progress (
 )
 """)
 
+# =========================
+# Tambahkan admin default
+# =========================
+c.execute("SELECT * FROM users WHERE username='admin'")
+admin_exists = c.fetchone()
+
+if not admin_exists:
+    c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
+              ('admin', 'admin123', 'admin'))
+    print("✅ Admin user berhasil dibuat (username: admin, password: admin123)")
+else:
+    print("ℹ️ Admin user sudah ada, tidak perlu dibuat ulang.")
+
+# Simpan perubahan dan tutup koneksi
 conn.commit()
 conn.close()
+
 print("✅ Database LMS final berhasil dibuat di 'data/lms.db'")
+
