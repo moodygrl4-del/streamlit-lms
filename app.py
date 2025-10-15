@@ -176,3 +176,39 @@ if menu == "Beranda":
     st.write("Selamat datang di LMS berbasis Streamlit!")
 elif menu == "Kalender":
     kalender_page()
+import sqlite3
+import streamlit as st
+
+# Fungsi ambil data kuis
+def get_quizzes():
+    conn = sqlite3.connect("data/lms.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM quizzes")
+    data = c.fetchall()
+    conn.close()
+    return data
+
+# Di bagian menu navigasi:
+menu = ["Dashboard", "Kalender", "Kuis"]
+choice = st.sidebar.selectbox("Menu", menu)
+
+if choice == "Kuis":
+    st.header("🧠 Kuis Interaktif")
+
+    quizzes = get_quizzes()
+    score = 0
+
+    if quizzes:
+        for q in quizzes:
+            st.subheader(q[1])
+            answer = st.radio("Pilih jawaban:", [q[2], q[3], q[4]], key=q[0])
+            if st.button(f"Periksa Jawaban {q[0]}"):
+                if answer == q[5]:
+                    st.success("Benar ✅")
+                    score += 1
+                else:
+                    st.error(f"Salah ❌ Jawaban benar: {q[5]}")
+
+        st.info(f"Skor akhir kamu: {score}/{len(quizzes)}")
+    else:
+        st.warning("Belum ada kuis tersedia.")
