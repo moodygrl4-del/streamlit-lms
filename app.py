@@ -7,8 +7,12 @@ from datetime import datetime, timedelta
 # ==========================================
 # FUNGSI DATABASE
 # ==========================================
+def get_connection():
+    os.makedirs("data", exist_ok=True)
+    return sqlite3.connect("data/lms.db")
+
 def get_user(username, password):
-    conn = sqlite3.connect("data/users.db")
+    conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
     data = c.fetchone()
@@ -16,8 +20,18 @@ def get_user(username, password):
     return data
 
 def add_task(username, tugas, file_path, deadline):
-    conn = sqlite3.connect("data/users.db")
+    conn = get_connection()
     c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            tugas TEXT,
+            file_path TEXT,
+            deadline TEXT
+        )
+    """)
+    conn.commit()
     c.execute(
         "INSERT INTO tasks (username, tugas, file_path, deadline) VALUES (?, ?, ?, ?)",
         (username, tugas, file_path, deadline)
@@ -25,12 +39,11 @@ def add_task(username, tugas, file_path, deadline):
     conn.commit()
     conn.close()
 
-def get_connection():
-    return sqlite3.connect("data/lms.db")
-
 def add_event(title, description, date):
     conn = get_connection()
     c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, date TEXT)")
+    conn.commit()
     c.execute("INSERT INTO events (title, description, date) VALUES (?, ?, ?)", (title, description, date))
     conn.commit()
     conn.close()
@@ -44,22 +57,58 @@ def get_all_events():
 def get_quizzes():
     conn = get_connection()
     c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS quizzes (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT, opt1 TEXT, opt2 TEXT, opt3 TEXT, answer TEXT)")
+    conn.commit()
     c.execute("SELECT * FROM quizzes")
     data = c.fetchall()
     conn.close()
     return data
 
+def get_unread_notifications(username):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            task_id INTEGER,
+            read_status INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit()
+
+    # Ambil tugas baru dari admin yang belum dibaca oleh siswa
+    c.execute("""
+        SELECT t.id, t.tugas, t.deadline 
+        FROM tasks t
+        LEFT JOIN notifications n ON t.id = n.task_id AND n.username = ?
+        WHERE t.username='admin' AND (n.read_status IS NULL OR n.read_status = 0)
+        ORDER BY t.id DESC
+    """, (username,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+def mark_notifications_as_read(username):
+    conn = get_connection()
+    c = conn.cursor()
+    # Tandai semua tugas admin sebagai sudah dibaca
+    c.execute("""
+        INSERT INTO notifications (username, task_id, read_status)
+        SELECT ?, id, 1 FROM tasks WHERE username='admin'
+        AND id NOT IN (SELECT task_id FROM notifications WHERE username=?)
+    """, (username, username))
+    c.execute("UPDATE notifications SET read_status=1 WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
 
 # ==========================================
-# KONFIGURASI STREAMLIT
+# STREAMLIT SETUP
 # ==========================================
 st.set_page_config(page_title="🎓 LMS Streamlit", layout="wide")
 st.title("🎓 Learning Management System")
 st.caption("By Kamu 🚀")
 
-# ==========================================
-# LOGIN FORM
-# ==========================================
 username = st.text_input("Username")
 password = st.text_input("Password", type="password")
 
@@ -69,12 +118,11 @@ if st.button("Login"):
         st.success(f"Selamat datang, {username}!")
         role = user[2]
 
-        # Sidebar Navigasi
         menu = ["Dashboard", "Kalender", "Kuis", "Riwayat Kuis", "Leaderboard"]
         choice = st.sidebar.selectbox("📂 Menu Navigasi", menu)
 
         # =====================================================
-        # DASHBOARD
+        # DASHBOARD ADMIN / GURU
         # =====================================================
         if choice == "Dashboard":
             if role == "admin":
@@ -95,25 +143,40 @@ if st.button("Login"):
                             st.error("Lengkapi judul dan file materi.")
 
                 with tab2:
-                    st.subheader("🧾 Buat Tugas")
+                    st.subheader("🧾 Buat Tugas Baru")
                     tugas = st.text_input("Nama Tugas")
                     deadline = st.date_input("Deadline", datetime.now() + timedelta(days=7))
                     if st.button("Publikasikan Tugas"):
                         add_task("admin", tugas, "", str(deadline))
-                        st.success(f"Tugas '{tugas}' berhasil dibuat! Deadline: {deadline}")
+                        st.success(f"Tugas '{tugas}' berhasil dibuat dan akan muncul di notifikasi siswa!")
 
                 with tab3:
                     st.subheader("📤 Pengumpulan Tugas Siswa")
-                    conn = sqlite3.connect("data/users.db")
+                    conn = get_connection()
                     df = pd.read_sql_query("SELECT * FROM tasks WHERE username != 'admin'", conn)
                     conn.close()
                     if not df.empty:
                         st.dataframe(df)
                     else:
-                        st.info("Belum ada tugas yang dikumpulkan siswa.")
+                        st.info("Belum ada tugas siswa.")
 
+            # =====================================================
+            # DASHBOARD SISWA
+            # =====================================================
             elif role == "student":
                 st.header("🎒 Dashboard Siswa")
+
+                # 🔔 Notifikasi tugas baru
+                new_tasks = get_unread_notifications(username)
+                if new_tasks:
+                    st.info("📢 Ada tugas baru dari guru!")
+                    for t in new_tasks[:3]:
+                        st.write(f"🧾 **{t[1]}** — Deadline: {t[2]}")
+                    if st.button("Tandai semua sudah dibaca"):
+                        mark_notifications_as_read(username)
+                        st.success("Semua notifikasi telah ditandai dibaca.")
+                        st.rerun()
+
                 tab1, tab2, tab3 = st.tabs(["Materi", "Upload Tugas", "Progress"])
 
                 with tab1:
@@ -123,7 +186,7 @@ if st.button("Login"):
                         for f in files:
                             st.download_button("📥 Unduh " + f, open(f"data/materials/" + f, "rb"), f)
                     else:
-                        st.info("Belum ada materi diunggah.")
+                        st.info("Belum ada materi.")
 
                 with tab2:
                     st.subheader("📌 Upload Tugas")
@@ -142,14 +205,14 @@ if st.button("Login"):
 
                 with tab3:
                     st.subheader("📊 Progress Belajar")
-                    conn = sqlite3.connect("data/users.db")
+                    conn = get_connection()
                     df = pd.read_sql_query(f"SELECT * FROM tasks WHERE username='{username}'", conn)
                     conn.close()
                     if len(df) > 0:
                         st.dataframe(df)
                         st.progress(min(len(df) / 5, 1.0))
                     else:
-                        st.info("Belum ada progress untuk ditampilkan.")
+                        st.info("Belum ada progress.")
 
         # =====================================================
         # KALENDER
@@ -164,12 +227,12 @@ if st.button("Login"):
                 if submitted:
                     add_event(title, description, str(date))
                     st.success(f"Kegiatan '{title}' berhasil ditambahkan!")
-            st.divider()
+
             events = get_all_events()
             if not events.empty:
                 st.dataframe(events, use_container_width=True)
             else:
-                st.info("Belum ada kegiatan yang tercatat.")
+                st.info("Belum ada kegiatan.")
 
         # =====================================================
         # KUIS
@@ -181,7 +244,7 @@ if st.button("Login"):
                 quizzes = get_quizzes()
                 score = 0
                 if quizzes:
-                    st.info("Jawab semua pertanyaan di bawah:")
+                    st.info("Jawab semua pertanyaan:")
                     answers = {}
                     for q in quizzes:
                         st.subheader(q[1])
@@ -192,12 +255,19 @@ if st.button("Login"):
                         for q in quizzes:
                             if answers[q[0]] == q[5]:
                                 score += 1
-
                         st.success(f"Skor kamu: {score}/{len(quizzes)}")
-
-                        # Simpan hasil kuis
                         conn = get_connection()
                         c = conn.cursor()
+                        c.execute("""
+                            CREATE TABLE IF NOT EXISTS quiz_results (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                student_name TEXT,
+                                score INTEGER,
+                                total INTEGER,
+                                date TEXT
+                            )
+                        """)
+                        conn.commit()
                         c.execute("""
                             INSERT INTO quiz_results (student_name, score, total, date)
                             VALUES (?, ?, ?, ?)
@@ -207,7 +277,7 @@ if st.button("Login"):
                         conn.close()
                         st.info("✅ Hasil kamu telah disimpan!")
                 else:
-                    st.warning("Belum ada kuis tersedia.")
+                    st.warning("Belum ada kuis.")
             else:
                 st.warning("Masukkan nama dulu sebelum mulai kuis!")
 
@@ -229,7 +299,7 @@ if st.button("Login"):
                 else:
                     st.warning("Belum ada hasil kuis kamu.")
             else:
-                st.info("Masukkan nama kamu untuk melihat riwayat.")
+                st.info("Masukkan nama kamu.")
 
         # =====================================================
         # LEADERBOARD
@@ -251,7 +321,8 @@ if st.button("Login"):
                     st.write(f"**{i}. {r[0]}** — Rata-rata: {r[1]:.2f}%")
             else:
                 st.warning("Belum ada data leaderboard.")
-
     else:
         st.error("Username atau password salah.")
+
+
 

@@ -1,6 +1,7 @@
 import sqlite3
+import os
 
-# Hubungkan ke database di folder "data"
+os.makedirs("data", exist_ok=True)
 conn = sqlite3.connect("data/lms.db")
 c = conn.cursor()
 
@@ -8,13 +9,13 @@ c = conn.cursor()
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    role TEXT,
-    email TEXT
+    username TEXT UNIQUE,
+    password TEXT,
+    role TEXT
 )
 """)
 
-# Tabel kegiatan / kalender
+# Tabel kalender / kegiatan
 c.execute("""
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +37,29 @@ CREATE TABLE IF NOT EXISTS quizzes (
 )
 """)
 
-# Tabel progres belajar
+# Tabel hasil kuis
+c.execute("""
+CREATE TABLE IF NOT EXISTS quiz_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_name TEXT,
+    score INTEGER,
+    total INTEGER,
+    date TEXT
+)
+""")
+
+# Tabel tugas
+c.execute("""
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    tugas TEXT,
+    file_path TEXT,
+    deadline TEXT
+)
+""")
+
+# Tabel progres
 c.execute("""
 CREATE TABLE IF NOT EXISTS progress (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,5 +71,4 @@ CREATE TABLE IF NOT EXISTS progress (
 
 conn.commit()
 conn.close()
-
-print("✅ Database LMS berhasil dibuat.")
+print("✅ Database LMS final berhasil dibuat di 'data/lms.db'")
