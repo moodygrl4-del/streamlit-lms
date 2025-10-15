@@ -114,3 +114,65 @@ if st.button("Login"):
                     st.info("Belum ada progress untuk ditampilkan.")
     else:
         st.error("Username atau password salah.")
+import streamlit as st
+import sqlite3
+import pandas as pd
+
+# ------------------------------
+# Fungsi database
+# ------------------------------
+def get_connection():
+    return sqlite3.connect("data/lms.db")
+
+def add_event(title, description, date):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("INSERT INTO events (title, description, date) VALUES (?, ?, ?)", (title, description, date))
+    conn.commit()
+    conn.close()
+
+def get_all_events():
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT * FROM events ORDER BY date ASC", conn)
+    conn.close()
+    return df
+
+# ------------------------------
+# Halaman kalender
+# ------------------------------
+def kalender_page():
+    st.title("📅 Kalender Kegiatan")
+
+    st.subheader("Tambah Kegiatan Baru")
+    with st.form("add_event_form"):
+        title = st.text_input("Judul Kegiatan")
+        description = st.text_area("Deskripsi")
+        date = st.date_input("Tanggal Kegiatan")
+        submitted = st.form_submit_button("Tambah")
+
+        if submitted:
+            add_event(title, description, str(date))
+            st.success(f"Kegiatan '{title}' berhasil ditambahkan!")
+
+    st.divider()
+
+    st.subheader("Daftar Semua Kegiatan")
+    events = get_all_events()
+    if not events.empty:
+        st.dataframe(events, use_container_width=True)
+    else:
+        st.info("Belum ada kegiatan yang tercatat.")
+
+# ------------------------------
+# Navigasi sederhana
+# ------------------------------
+menu = st.sidebar.radio(
+    "Navigasi",
+    ["Beranda", "Kalender"]
+)
+
+if menu == "Beranda":
+    st.title("🎓 Learning Management System")
+    st.write("Selamat datang di LMS berbasis Streamlit!")
+elif menu == "Kalender":
+    kalender_page()
